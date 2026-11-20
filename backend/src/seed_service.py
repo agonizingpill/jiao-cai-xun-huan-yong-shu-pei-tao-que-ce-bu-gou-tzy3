@@ -9,7 +9,7 @@ def seed():
     Base.metadata.create_all(engine)
     if engine.dialect.name=='mysql':
         with engine.begin()as c:
-            cols={r[1]for r in c.execute(text('SHOW COLUMNS FROM purchases'))}
+            cols={r[0] for r in c.execute(text('SHOW COLUMNS FROM purchases'))}
             for name,ddl in{'promised_date':'DATE','original_promised_date':'DATE','risk_level':'VARCHAR(10)','risk_score':'INT','risk_samples':'INT','risk_received':'INT','risk_ordered':'INT','risk_promised':'DATE'}.items():
                 if name not in cols:c.execute(text('ALTER TABLE purchases ADD COLUMN '+name+' '+ddl))
     with Session()as s:
