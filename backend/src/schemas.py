@@ -1,4 +1,5 @@
 from typing import Literal
+from datetime import date
 from pydantic import BaseModel,Field,model_validator
 class Login(BaseModel):email:str;password:str
 class EditionInput(BaseModel):code:str=Field(min_length=3,max_length=40);title:str=Field(min_length=2,max_length=100);subject:str=Field(min_length=2,max_length=40);version:str=Field(min_length=1,max_length=30);deposit_cents:int=Field(ge=100,le=100000)
@@ -14,7 +15,8 @@ class PackInput(BaseModel):
     def unique(self):
         if len({x.edition_id for x in self.lines})!=len(self.lines):raise ValueError('课程版次不能重复')
         return self
-class ReceiveInput(BaseModel):quantity:int=Field(ge=1,le=100);barcode_prefix:str=Field(min_length=3,max_length=45)
+class ReceiveInput(BaseModel):quantity:int=Field(ge=1,le=100);barcode_prefix:str=Field(min_length=3,max_length=45);batch:str=Field(min_length=4,max_length=60)
+class PromiseInput(BaseModel):promised_date:date
 class IssueInput(BaseModel):student_id:int
 class AccountInput(BaseModel):student_id:int;term:str=Field(min_length=3,max_length=30)
 class DepositInput(BaseModel):amount_cents:int=Field(ge=100,le=1000000);receipt:str=Field(min_length=4,max_length=80)

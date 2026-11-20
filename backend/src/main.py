@@ -11,7 +11,7 @@ from .schemas import *
 from .common import lock,inventory_lock,pack,add,audit
 from .auth import current,writer,supervisor,verify,token
 from .middleware import Trace,Burst
-from . import pack_service as packs,circulation_service as circulation
+from . import pack_service as packs,circulation_service as circulation,purchase_service as purchasing
 q=redis.Redis.from_url(os.environ['REDIS_URL'],decode_responses=True)
 @asynccontextmanager
 async def lifespan(app):
@@ -35,7 +35,7 @@ def login(d:Login,s=Depends(session)):
 def me(u=Depends(current)):return {'email':u.email,'role':u.role}
 @app.get('/archive')
 def archive(s=Depends(session),u=Depends(current)):
-    return {m.__tablename__:[pack(x)for x in s.scalars(select(m).order_by(m.id))]for m in (Edition,Compatibility,Classroom,Student,Copy,Inspection,Pack,PackLine,Assignment,Purchase,Account,DepositEntry)}
+    return {m.__tablename__:[pack(x)for x in s.scalars(select(m).order_by(m.id))]for m in (Edition,Compatibility,Classroom,Student,Copy,Inspection,Pack,PackLine,Assignment,Purchase,ReceiveBatch,Account,DepositEntry)}
 @app.get('/audits')
 def audits(s=Depends(session),u=Depends(current)):return [pack(x)for x in s.scalars(select(Audit).order_by(Audit.id.desc()).limit(50))]
 @app.post('/editions')
@@ -86,6 +86,14 @@ def reserve(id:int,s=Depends(session),u=Depends(supervisor)):
 @app.post('/purchases/{id}/receive')
 def receive(id:int,d:ReceiveInput,s=Depends(session),u=Depends(supervisor)):
     x=packs.receive(s,id,d,u);s.commit();return x
+@app.get('/purchases/chasing')
+def chasing(s=Depends(session),u=Depends(current)):return purchasing.chasing(s)
+@app.post('/purchases/estimate')
+def estimate(s=Depends(session),u=Depends(writer)):
+    n=purchasing.estimate_all(s,u);s.commit();return {'estimated':n}
+@app.post('/purchases/{id}/promise')
+def promise(id:int,d:PromiseInput,s=Depends(session),u=Depends(writer)):
+    x=purchasing.promise(s,id,d,u);s.commit();return x
 @app.post('/accounts')
 def account(d:AccountInput,s=Depends(session),u=Depends(writer)):
     lock(s,Student,d.student_id);x=add(s,Account(**d.model_dump()));audit(s,u,'建立学期押金账户');s.commit();return x

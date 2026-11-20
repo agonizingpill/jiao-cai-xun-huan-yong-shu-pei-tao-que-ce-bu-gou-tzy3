@@ -1,4 +1,4 @@
-from sqlalchemy import Column,Integer,String,ForeignKey,JSON,UniqueConstraint,CheckConstraint
+from sqlalchemy import Column,Integer,String,ForeignKey,JSON,UniqueConstraint,CheckConstraint,Date
 from .db import Base
 from .constants import COPY_CONDITIONS,PACK_STATES,ASSIGNMENT_STATES
 class User(Base):
@@ -39,7 +39,10 @@ class Assignment(Base):
     id=Column(Integer,primary_key=True);line_id=Column(Integer,ForeignKey('pack_lines.id'),nullable=False);copy_id=Column(Integer,ForeignKey('copies.id'),nullable=False);student_id=Column(Integer,ForeignKey('students.id'));state=Column(String(20),default=ASSIGNMENT_STATES[0]);deposit_cents=Column(Integer,nullable=False);replacement_for_id=Column(Integer,ForeignKey('assignments.id'));note=Column(String(250),default='')
 class Purchase(Base):
     __tablename__='purchases'
-    id=Column(Integer,primary_key=True);line_id=Column(Integer,ForeignKey('pack_lines.id'),unique=True,nullable=False);ordered=Column(Integer,nullable=False);received=Column(Integer,default=0);state=Column(String(20),default='open')
+    id=Column(Integer,primary_key=True);line_id=Column(Integer,ForeignKey('pack_lines.id'),unique=True,nullable=False);ordered=Column(Integer,nullable=False);received=Column(Integer,default=0);state=Column(String(20),default='open');promised_date=Column(Date);original_promised_date=Column(Date);risk_level=Column(String(10));risk_score=Column(Integer);risk_samples=Column(Integer);risk_received=Column(Integer);risk_ordered=Column(Integer);risk_promised=Column(Date)
+class ReceiveBatch(Base):
+    __tablename__='receive_batches'
+    id=Column(Integer,primary_key=True);purchase_id=Column(Integer,ForeignKey('purchases.id'),nullable=False);batch_key=Column(String(60),unique=True,nullable=False);quantity=Column(Integer,nullable=False);barcode_prefix=Column(String(45),nullable=False);received_on=Column(Date,nullable=False)
 class Account(Base):
     __tablename__='accounts'
     id=Column(Integer,primary_key=True);student_id=Column(Integer,ForeignKey('students.id'),nullable=False);term=Column(String(30),nullable=False);balance_cents=Column(Integer,default=0);state=Column(String(20),default='open')

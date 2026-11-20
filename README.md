@@ -17,20 +17,21 @@ docker compose exec -T backend python -m scripts.seed_demo
 
 |岗位|邮箱 / 统一口令 Books2026!|权限|
 |---|---|---|
-|operator 用书库管|operator@xunshu.demo|登记版次/兼容申请/班级学生/回收书况/配套，分析共需，建立学期账户，学生领用/退书/换书|
+|operator 用书库管|operator@xunshu.demo|登记版次/兼容申请/班级学生/回收书况/配套，分析共需，建立学期账户，学生领用/退书/换书，补购承诺日与改期、逾期风险重估|
 |supervisor 书站主管|supervisor@xunshu.demo|全部日常动作；批准兼容、锁库存配套、采购到货、押金实收、报损扣款、期末清算|
-|viewer 查阅席|viewer@xunshu.demo|六页面与档案/审计读取；所有写接口后端403|
+|viewer 查阅席|viewer@xunshu.demo|七页面与档案/审计读取；所有写接口后端403|
 
 JWT8小时，PBKDF2盐化口令；Trace请求ID、Burst每IP每分钟360请求、审计actor/action。默认JWT与数据库口令仅用于本地演示，部署时替换。
 
-## 六个模块与领域规则
+## 七个模块与领域规则
 
 1. **版次兼容与课程清单**：Edition有唯一版本码、课程subject、版本、每册押金。Compatibility是明确方向“allowed旧版可代target课程版”，仅同课程不同版次可申请，主管批准才算兼容；不做传递推断。班级和学生有独立关系实体。一个配套同subject只能一条课程，不能用多个版次重复要求同科。
 2. **回收书况和可用库存**：Copy唯一条码，关联实际版次；回收默认uninspected。Inspection保存检查历史，usable成为available，repair成为待修；修好后再检查可恢复。预留/在借/遗失书不允许直接覆盖书况。库存按单本状态计算，不用无依据的总数加减。
 3. **班级配套与共需规则**：Pack关联班级/学期，PackLine要求课程版次和数量（≤班级人数）。Apriori提供历史课程共需建议，不自动加入课程或直接发书。planned→partial或allocated；每条PackLine按唯一Copy生成Assignment，保留配套、单本和学生的关系。
 4. **领用分配和缺册补购**：主管配套先按固定ID顺序锁全部Edition，再取兼容、usable、available单本，原子改为reserved。数量不足形成该Line唯一Purchase缺册订单，不负库存；到货按新条码逐本入库，可部分到货/再次续配。重复配套不重复占书或重复扩缺册。学生领用要求本班、开放学期账户、押金余额覆盖全部在借书，且同生同学期同subject不得在跨Pack/跨版次重复领；原书归还后可再领。
-5. **学生退换和损耗追踪**：issued才可退/换/报损。完好退书回available不收损耗；破损回repair，扣款≤该本押金且≤账户余额。换书必须另有兼容可用实物，排除刚还那本，保留replacement_for_id前后条码；若库存或押金不足整事务回滚，原借书继续在借。主管遗失报损改Copy lost，金额扣一次，不重复扣款。
-6. **学期清算与押金退补**：Account每生每学期唯一，DepositEntry保存实收正数、损耗负数、退款负数和唯一回单号。押金实收只限open账户；期末有任何该学期issued书目就拒绝清算。全部归还/报损后，主管退款当前余额并置settled/0，不能重复退或再收款。无支付网关，退款是有凭证的本地登记。
+5. **补购承诺与催办**：库管为在途补购单登记承诺日，改期只改当前承诺、原承诺保留供历史估计；缺承诺日的旧单标待核。每次验收按批次键登记ReceiveBatch实收批次，同键重试不重复入库、不重复累计；后续到货只用于判定是否按期到齐。逾期风险用历史已收齐订单在相同提前天数的实收进度估计：同期进度不高于当前单的历史单中，未按（原）承诺到齐的比例即风险分；历史参照一律按原承诺计算。验收与估计并发时照常收书，实收或承诺变化后旧估计标待更新，收齐即撤下催办列表；催办页按当前风险排单。
+6. **学生退换和损耗追踪**：issued才可退/换/报损。完好退书回available不收损耗；破损回repair，扣款≤该本押金且≤账户余额。换书必须另有兼容可用实物，排除刚还那本，保留replacement_for_id前后条码；若库存或押金不足整事务回滚，原借书继续在借。主管遗失报损改Copy lost，金额扣一次，不重复扣款。
+7. **学期清算与押金退补**：Account每生每学期唯一，DepositEntry保存实收正数、损耗负数、退款负数和唯一回单号。押金实收只限open账户；期末有任何该学期issued书目就拒绝清算。全部归还/报损后，主管退款当前余额并置settled/0，不能重复退或再收款。无支付网关，退款是有凭证的本地登记。
 
 所有修改实体的事务失败即回滚，检查库存与改变库存共用Edition父锁。全站锁5–若干Edition的范围适合小书站；不是大规模多校库存服务。MySQL READ COMMITTED使等锁后读到新提交状态，所有SUM/单本分配在同一受控区内。Account入账独立行锁，回单唯一冲突回滚余额。
 
@@ -53,8 +54,8 @@ worker从Redis取Pack ID，查询当前课程subject及历史篮，计算真实�
 
 ## 结构与开发
 
-`backend/src/models.py`关系表、`schemas.py`输入校验、`common.py`库存锁/兼容查询/审计、`pack_service.py`配套与补购、`circulation_service.py`学生领退换/报损/清算、`basket_rules.py`真实Apriori、`worker.py`队列、`main.py`逐接口权限。前端六pages为catalog/inspection/packs/allocation/returns/deposits；`components/books.js`教材书脊、条码签、班级清单跨页复用；`utils/format.js`数据与转义、`utils/actions.js`请求错误恢复、store档案关联。前后端constants定义角色、Copy书况、配套/领用状态，后端规则校验、前端显示真实状态。
+`backend/src/models.py`关系表、`schemas.py`输入校验、`common.py`库存锁/兼容查询/审计、`pack_service.py`配套与补购验收、`purchase_service.py`承诺日/逾期风险估计/催办排单、`circulation_service.py`学生领退换/报损/清算、`basket_rules.py`真实Apriori、`worker.py`队列、`main.py`逐接口权限。前端七pages为catalog/inspection/packs/allocation/chasing/returns/deposits；`components/books.js`教材书脊、条码签、班级清单跨页复用；`utils/format.js`数据与转义、`utils/actions.js`请求错误恢复、store档案关联。前后端constants定义角色、Copy书况、配套/领用状态与风险等级，后端规则校验、前端显示真实状态。
 
-本地后端安装requirements并设置DATABASE_URL/REDIS_URL/JWT_SECRET，`uvicorn src.main:app --reload`与`python -m src.worker`；前端保留Compose Nginx /api代理。seed自然键只补缺，不覆盖人工检查、条码状态、兼容核定、配套、已付押金/损耗/退款；历史训练篮固定96条。测试、日志与截图在`../../test-artifacts/gb-1038/`，不混入生产源码。
+本地后端安装requirements并设置DATABASE_URL/REDIS_URL/JWT_SECRET，`uvicorn src.main:app --reload`与`python -m src.worker`；前端保留Compose Nginx /api代理。seed自然键只补缺，不覆盖人工检查、条码状态、兼容核定、配套、承诺日/改期、已付押金/损耗/退款；历史训练篮固定96条，另含12张上学期已完结补购单（10按期、2张按原承诺逾期，含改期单）作催办风险的历史参照，及1张缺承诺日的在途旧单演示待核。测试、日志与截图在`../../test-artifacts/gb-1038/`，不混入生产源码。
 
-局限：不接校园一卡通/支付/采购供应商；班级人数是课程份数上限，不建选课排课；押金按要求课程版次计，不按旧书折旧计；退书后不自动转配，库管需发起新配套；补购只记数量到货，不计采购款；未实现整配套取消释放、兼容映射撤销、学期账户重开或硬崩溃任务回收；课程篮为模拟数据。
+局限：不接校园一卡通/支付/采购供应商；班级人数是课程份数上限，不建选课排课；押金按要求课程版次计，不按旧书折旧计；退书后不自动转配，库管需发起新配套；补购只记数量到货与实收批次，不计采购款；逾期风险只按同期进度队列的经验比例估计，不建模供应商与物流；未实现整配套取消释放、兼容映射撤销、学期账户重开或硬崩溃任务回收；课程篮为模拟数据。

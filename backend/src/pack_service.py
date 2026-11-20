@@ -1,6 +1,7 @@
+from datetime import date
 from sqlalchemy import select,func
 from fastapi import HTTPException
-from .models import Edition,Classroom,Pack,PackLine,Copy,Assignment,Purchase
+from .models import Edition,Classroom,Pack,PackLine,Copy,Assignment,Purchase,ReceiveBatch
 from .common import inventory_lock,compatible,lock,add,pack,audit
 
 def create(s,d,u):
@@ -34,8 +35,10 @@ def reserve(s,id,u):
     p.state='partial'if missing else'allocated';audit(s,u,'锁定可用单本并登记缺册 '+p.code);return pack(p)|{'new_assignment_ids':reserved,'shortages':missing}
 def receive(s,id,d,u):
     inventory_lock(s);po=lock(s,Purchase,id);line=s.get(PackLine,po.line_id);p=lock(s,Pack,line.pack_id)
+    if s.scalar(select(ReceiveBatch.id).where(ReceiveBatch.batch_key==d.batch)):return pack(po)|{'deduplicated':True}
     if p.state=='cancelled' or po.state!='open' or d.quantity>po.ordered-po.received:raise HTTPException(409,'补购数量超过未收缺册或订单已关闭')
     for n in range(d.quantity):s.add(Copy(barcode=d.barcode_prefix+'-'+str(po.received+n+1),edition_id=line.edition_id,condition='usable',state='available',source='缺册补购PO'+str(po.id)))
     po.received+=d.quantity
     if po.received==po.ordered:po.state='received'
-    s.flush();audit(s,u,'补购到货验收 '+str(po.id));return pack(po)
+    s.add(ReceiveBatch(purchase_id=po.id,batch_key=d.batch,quantity=d.quantity,barcode_prefix=d.barcode_prefix,received_on=date.today()))
+    s.flush();audit(s,u,'补购到货验收 '+str(po.id));return pack(po)|{'deduplicated':False}

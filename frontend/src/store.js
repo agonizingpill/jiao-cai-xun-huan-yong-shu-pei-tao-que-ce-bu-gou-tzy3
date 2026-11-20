@@ -1,1 +1,1 @@
-import{api}from'./api.js';export const state={user:null,data:null};export async function refresh(){state.data=await api('/archive')}
+import{api}from'./api.js';export const state={user:null,data:null,chasing:null};export async function refresh(){let[a,c]=await Promise.all([api('/archive'),api('/purchases/chasing')]);state.data=a;state.chasing=c}
